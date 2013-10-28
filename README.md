@@ -3,10 +3,10 @@ dextractor
 
 A simple DEX information extractor
 
-Documentation about the DEX file format: http://source.android.com/devices/tech/dalvik/dex-format.html
-Overview about APK and DEX file format: http://www.amazon.com/Decompiling-Android-Godfrey-Nolan/dp/1430242485
-Axelle Aprville "Hidden Methods" @Hack.lu-2013: http://t.co/PO1QnkqbTw
-Jurriaan Bremer "Abusing Dalvik" @Hack.lu-2013: http://archive.hack.lu/2013/AbusingDalvikBeyondRecognition.pdf
+- Documentation about the DEX file format: http://source.android.com/devices/tech/dalvik/dex-format.html
+- Overview about APK and DEX file format: http://www.amazon.com/Decompiling-Android-Godfrey-Nolan/dp/1430242485
+- Axelle Aprville "Hidden Methods" @Hack.lu-2013: http://t.co/PO1QnkqbTw
+- Jurriaan Bremer "Abusing Dalvik" @Hack.lu-2013: http://archive.hack.lu/2013/AbusingDalvikBeyondRecognition.pdf
 
 Main goals:
 
