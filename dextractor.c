@@ -19,9 +19,7 @@ boolean verifyIntegrity(FILE *fp) {
 /* Utility Functions */
 
 void clear() {
-	if(system("cls")) {
-		system("clear");
-	}
+	system("clear");
 }
 
 unsigned short bytesToUshort(FILE *fp, int from) {
@@ -147,15 +145,16 @@ void header(FILE *fp) {
 	printf("\n");
 }
 
-void strings(FILE *fp) {
+void strings(FILE *fp, boolean hidden) {
 	unsigned int count = bytesToUint(fp, 56);
 	unsigned int string_offset = bytesToUint(fp, 60);
-	printf("\033[22;32mStrings:\n");
+	if(!hidden)
+		printf("\033[22;32mStrings:\n");
 	unsigned int i, j, x;
 	unsigned int offset_start, offset_end, string_length;
 	unsigned char *current_string;
 	offset_start = bytesToUint(fp, string_offset);
-	for(i = 0; i < count - 1; i++) {
+	for(i = 0; i < count; i++) {
 		x = 0;
 		string_offset += 4;
 		offset_end = bytesToUint(fp, string_offset);
@@ -164,41 +163,50 @@ void strings(FILE *fp) {
 			printf("Error setting the file pointer!\n\n");
 			exit(1);
 		}
-		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] ", i);
 		unsigned char c;
 		current_string = (char *)malloc(sizeof(unsigned char) * string_length);
 		for(j = 0; j < string_length; j++) {
 			c = fgetc(fp);
-			if((int)c >= 0 && (int)c <= 31 || c == '!' || c == '"' || c == '#' || c == '%' || c == '\'' || (c == '(' && j == 0) || c == '&' || (c == ' ' && j == 0)) {
-				//to be completed, for now it's ok
+			if(c == '\0') {
+				break;
 			} else {
-				current_string[x] = c;
-				x++;
-				printf("%c", c);
+				if((int)c >= 0 && (int)c <= 31 || c == '!' || c == '"' || c == '#' || c == '%' || c == '\'' || (c == '(' && j == 0) || c == '&' || (c == ' ' && j == 0)) {
+					//to be completed, for now it's ok
+				} else {
+					current_string[x] = c;
+					x++;
+				}
 			}
 		}
+		if(!hidden)
+			printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] %s", i, current_string);
 		strings_array[i] = current_string;
 		offset_start = offset_end;
 	}
-	printf("\n\n");
+	if(!hidden)
+		printf("\n\n");
 }
 
-void types(FILE *fp) {
-	printf("\033[22;32mJava Types & Classes:\n");
+void types(FILE *fp, boolean hidden) {
+	if(!hidden)
+		printf("\033[22;32mJava Types & Classes:\n");
 	unsigned int count = bytesToUint(fp, 64);
 	unsigned int i, j;
 	unsigned int type_id_list_offset = bytesToUint(fp, 68);
 	for(i = 0; i < count; i++) {
 		j = bytesToUint(fp, type_id_list_offset);
-		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] %s", i, strings_array[j]);
+		if(!hidden)
+			printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] %s", i, strings_array[j]);
 		types_array[i] = strings_array[j];
 		type_id_list_offset += 4;
 	}
-	printf("\n\n");
+	if(!hidden)
+		printf("\n\n");
 }
 
-void protos(FILE *fp) {
-	printf("\033[22;32mPrototypes:\n");
+void protos(FILE *fp, boolean hidden) {
+	if(!hidden)
+		printf("\033[22;32mPrototypes:\n");
 	unsigned int count = bytesToUint(fp, 72);
 	unsigned int proto_id_struct_offset = bytesToUint(fp, 76);
 	unsigned int shorty_idx, return_type_idx, parameters_offset_start, parameters_offset_end;
@@ -219,9 +227,11 @@ void protos(FILE *fp) {
 		protos_array[i] = prototype_information;
 		/* Save end */
 		proto_id_struct_offset += 12;
-		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) Parameters()", i, strings_array[shorty_idx], types_array[return_type_idx]);
+		if(!hidden)
+			printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) Parameters()", i, strings_array[shorty_idx], types_array[return_type_idx]);
 	}
-	printf("\n\n");
+	if(!hidden)
+		printf("\n\n");
 }
 
 void fields(FILE *fp) {
@@ -262,16 +272,15 @@ void initialize_arrays(FILE *fp) {
 	//Strings array
 	unsigned int count = bytesToUint(fp, 56);
 	strings_array = (char **)malloc(count * sizeof(char *));
-	strings(fp);
+	strings(fp, true);
 	//Types array
 	count = bytesToUint(fp, 64);
 	types_array = (char **)malloc(count * sizeof(char *));
-	types(fp);
+	types(fp, true);
 	//Prototypes array
 	count = bytesToUint(fp, 72);
 	protos_array = (char **)malloc(count * sizeof(char *));
-	protos(fp);
-	clear(); //<-- horrible
+	protos(fp, true);
 }
 
 int main() {
@@ -303,13 +312,13 @@ int main() {
 				header(fp);
 				break;
 			case 2: 
-				strings(fp);
+				strings(fp, false);
 				break;
 			case 3:
-				types(fp);
+				types(fp, false);
 				break;
 			case 4:
-				protos(fp);
+				protos(fp, false);
 				break;
 			case 5:
 				fields(fp);
