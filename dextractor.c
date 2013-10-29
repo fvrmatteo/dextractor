@@ -147,6 +147,7 @@ void header(FILE *fp) {
 	printf("\n");
 }
 
+//the function doesn't work well, need to be recoded
 void strings(FILE *fp) {
 	unsigned int count = bytesToUint(fp, 56);
 	unsigned int string_offset = bytesToUint(fp, 60);
