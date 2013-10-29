@@ -145,12 +145,7 @@ void header(FILE *fp) {
 	printf("\n");
 }
 
-<<<<<<< HEAD
 void strings(FILE *fp, boolean hidden) {
-=======
-//the function doesn't work well, need to be recoded
-void strings(FILE *fp) {
->>>>>>> 2413977ac8a6e9af104b3360050df41da16f2f7f
 	unsigned int count = bytesToUint(fp, 56);
 	unsigned int string_offset = bytesToUint(fp, 60);
 	if(!hidden)
