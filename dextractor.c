@@ -6,9 +6,9 @@ typedef unsigned int boolean;
 #define true 1
 #define false 0
 
-/* Global Variables */
 char **strings_array;
 char **types_array;
+char **protos_array;
 
 //This method verifies (or try to verifies) the integrity of a given DEX package
 boolean verifyIntegrity(FILE *fp) {
@@ -16,34 +16,51 @@ boolean verifyIntegrity(FILE *fp) {
 	return true;
 }
 
+/* Utility Functions */
+
 void clear() {
 	if(system("cls")) {
 		system("clear");
 	}
-	//uncomment this if compiled on Windows: system("cls"), and comment the line above
 }
 
-unsigned int bytesToInt(FILE *fp, int from, int length) {
+unsigned short bytesToUshort(FILE *fp, int from) {
 	if(fseek(fp, from, 0) == -1) {
 		printf("Error setting the file pointer!\n\n");
 		exit(1);
 	}
 	unsigned int i;
-	unsigned char *bytes = (unsigned char *)malloc(sizeof(unsigned char) * length);
-	for(i = 0; i < length; i++) {
+	unsigned char bytes[2];
+	for(i = 0; i < 2; i++) {
 		bytes[i] = (unsigned char)fgetc(fp);
 	}
-	unsigned int mid = length / 2;
-	unsigned char temp;
-	unsigned int last = length - 1;
-	for(i = 0; i < mid; i++) {
-		temp = bytes[i];
-		bytes[i] = bytes[last];
-		bytes[last--] = temp;
-	}
-	unsigned int value = bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3];
-	return value;
+	return (bytes[1] << 8 | bytes[0]);
 }
+
+unsigned int bytesToUint(FILE *fp, int from) {
+	if(fseek(fp, from, 0) == -1) {
+		printf("Error setting the file pointer!\n\n");
+		exit(1);
+	}
+	unsigned int i;
+	unsigned char bytes[4];
+	for(i = 0; i < 4; i++) {
+		bytes[i] = (unsigned char)fgetc(fp);
+	}
+	return bytes[3] << 24 | bytes[2] << 16 | bytes[1] << 8 | bytes[0];
+}
+
+char *strconcat(char *s1, char *s2) {
+	size_t old_size;
+	char *t;
+	old_size = strlen(s1);
+	t = malloc(old_size + strlen(s2) + 1);
+	strcpy(t, s1);
+	strcpy(t + old_size, s2);
+	return t;
+}
+
+/* Functions used to extract information from DEX structure */
 
 void extractBytes(FILE *fp, int from, int length, char *title, boolean decimal, boolean revert) {
 	if(fseek(fp, from, 0) == -1) {
@@ -73,85 +90,81 @@ void extractBytes(FILE *fp, int from, int length, char *title, boolean decimal, 
 			printf("%02x ", (unsigned char)fgetc(fp));
 		}
 	}
-	
 	if(decimal) {
-		printf("\tDecimal [%d]", bytesToInt(fp, from, length));
+		printf("\t\033[22;37mDecimal [\033[22;31m%d\033[22;37m]", bytesToUint(fp, from));
 	}
 	printf("\n");
 }
 
 void header(FILE *fp) {
-	printf("Header information:\n");
-	char *title = "  [+] Magic: ";
+	printf("\033[22;32mHeader information:\n\n");
+	char *title = "  \033[22;37m[\033[01;37m+\033[22;37m] Magic: \033[22;31m";
 	extractBytes(fp, 0, 8, title, false, false);
-	title = "  [+] Checksum: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Checksum: \033[22;31m";
 	extractBytes(fp, 8, 4, title, false, false);
-	title = "  [+] Signature: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Signature: \033[22;31m";
 	extractBytes(fp, 12, 20, title, false, false);
-	title = "  [+] File Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] File Size: \033[22;31m";
 	extractBytes(fp, 32, 4, title, true, true);
-	title = "  [+] Header Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Header Size: \033[22;31m";
 	extractBytes(fp, 36, 4, title, true, true);
-	title = "  [+] Endian Tag: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Endian Tag: \033[22;31m";
 	extractBytes(fp, 40, 4, title, false, false);
-	title = "  [+] Link Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Link Size: \033[22;31m";
 	extractBytes(fp, 44, 4, title, true, true);
-	title = "  [+] Link Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Link Offset: \033[22;31m";
 	extractBytes(fp, 48, 4, title, false, true);
-	title = "  [+] Map Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Map Offset: \033[22;31m";
 	extractBytes(fp, 52, 4, title, false, true);
-	title = "  [+] String Ids Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] String Ids Size: \033[22;31m";
 	extractBytes(fp, 56, 4, title, true, true);
-	title = "  [+] String Ids Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] String Ids Offset: \033[22;31m";
 	extractBytes(fp, 60, 4, title, false, true);
-	title = "  [+] Type Ids Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Type Ids Size: \033[22;31m";
 	extractBytes(fp, 64, 4, title, true, true);
-	title = "  [+] Type Ids Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Type Ids Offset: \033[22;31m";
 	extractBytes(fp, 68, 4, title, false, true);
-	title = "  [+] Proto Ids Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Proto Ids Size: \033[22;31m";
 	extractBytes(fp, 72, 4, title, true, true);
-	title = "  [+] Proto Ids Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Proto Ids Offset: \033[22;31m";
 	extractBytes(fp, 76, 4, title, false, true);
-	title = "  [+] Field Ids Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Field Ids Size: \033[22;31m";
 	extractBytes(fp, 80, 4, title, true, true);
-	title = "  [+] Field Ids Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Field Ids Offset: \033[22;31m";
 	extractBytes(fp, 84, 4, title, false, true);
-	title = "  [+] Method Ids Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Method Ids Size: \033[22;31m";
 	extractBytes(fp, 88, 4, title, true, true);
-	title = "  [+] Method Ids Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Method Ids Offset: \033[22;31m";
 	extractBytes(fp, 92, 4, title, false, true);
-	title = "  [+] Class Defs Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Class Defs Size: \033[22;31m";
 	extractBytes(fp, 96, 4, title, true, true);
-	title = "  [+] Class Defs Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Class Defs Offset: \033[22;31m";
 	extractBytes(fp, 100, 4, title, false, true);
-	title = "  [+] Data Size: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Data Size: \033[22;31m";
 	extractBytes(fp, 104, 4, title, true, true);
-	title = "  [+] Data Offset: ";
+	title = "  \033[22;37m[\033[01;37m+\033[22;37m] Data Offset: \033[22;31m";
 	extractBytes(fp, 108, 4, title, false, true);
 	printf("\n");
 }
 
 void strings(FILE *fp) {
-	unsigned int count = bytesToInt(fp, 56, 4);
-	printf("[+] Strings count: %d", count);
-	char *title = "\n[+] String Offset: ";
-	extractBytes(fp, 60, 4, title, false, false);
-	unsigned int string_offset = bytesToInt(fp, 60, 4);
-	printf("[+] String list:");
+	unsigned int count = bytesToUint(fp, 56);
+	unsigned int string_offset = bytesToUint(fp, 60);
+	printf("\033[22;32mStrings:\n");
 	unsigned int i, j, x;
 	unsigned int offset_start, offset_end, string_length;
 	unsigned char *current_string;
-	offset_start = bytesToInt(fp, string_offset, 4);
+	offset_start = bytesToUint(fp, string_offset);
 	for(i = 0; i < count - 1; i++) {
 		x = 0;
 		string_offset += 4;
-		offset_end = bytesToInt(fp, string_offset, 4);
+		offset_end = bytesToUint(fp, string_offset);
 		string_length = offset_end - offset_start;
 		if(fseek(fp, offset_start, 0) == -1) {
 			printf("Error setting the file pointer!\n\n");
 			exit(1);
 		}
-		printf("\n  [%d] ", i);
+		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] ", i);
 		unsigned char c;
 		current_string = (char *)malloc(sizeof(unsigned char) * string_length);
 		for(j = 0; j < string_length; j++) {
@@ -171,13 +184,13 @@ void strings(FILE *fp) {
 }
 
 void types(FILE *fp) {
-	printf("[+] Java Types & Classes:");
-	unsigned int count = bytesToInt(fp, 64, 4);
+	printf("\033[22;32mJava Types & Classes:\n");
+	unsigned int count = bytesToUint(fp, 64);
 	unsigned int i, j;
-	unsigned int type_id_list_offset = bytesToInt(fp, 68, 4);
+	unsigned int type_id_list_offset = bytesToUint(fp, 68);
 	for(i = 0; i < count; i++) {
-		j = bytesToInt(fp, type_id_list_offset, 4);
-		printf("\n  [%d] %s", i, strings_array[j]);
+		j = bytesToUint(fp, type_id_list_offset);
+		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] %s", i, strings_array[j]);
 		types_array[i] = strings_array[j];
 		type_id_list_offset += 4;
 	}
@@ -185,43 +198,86 @@ void types(FILE *fp) {
 }
 
 void protos(FILE *fp) {
-	printf("[+] Methods Prototypes:");
-	unsigned int count = bytesToInt(fp, 72, 4);
-	unsigned int proto_id_struct_offset = bytesToInt(fp, 76, 4);
+	printf("\033[22;32mPrototypes:\n");
+	unsigned int count = bytesToUint(fp, 72);
+	unsigned int proto_id_struct_offset = bytesToUint(fp, 76);
 	unsigned int shorty_idx, return_type_idx, parameters_offset_start, parameters_offset_end;
 	unsigned int i;
 	for(i = 0; i < count; i++) {
-		shorty_idx = bytesToInt(fp, proto_id_struct_offset, 4);
-		return_type_idx = bytesToInt(fp, proto_id_struct_offset + 4, 4);
-		//parameters_offset_start = bytesToInt(fp, proto_id_struct_offset + 8, 4);
-		//parameters_offset_end = bytesToInt(fp, proto_id_struct_offset + 20, 4);
+		shorty_idx = bytesToUint(fp, proto_id_struct_offset);
+		return_type_idx = bytesToUint(fp, proto_id_struct_offset + 4);
+		//parameters_offset_start = bytesToUint(fp, proto_id_struct_offset + 8, 4);
+		//parameters_offset_end = bytesToUint(fp, proto_id_struct_offset + 20, 4);
 		//to be completed, have to value some things
+
+		/* Save the prototype information in the protos_array */
+		char *prototype_information = "ShortyDescriptor(\033[22;31m";
+		prototype_information = strconcat(prototype_information, strings_array[shorty_idx]);
+		prototype_information = strconcat(prototype_information, "\033[22;37m) Return Type(\033[22;31m");
+		prototype_information = strconcat(prototype_information, types_array[return_type_idx]);
+		prototype_information = strconcat(prototype_information, "\033[22;37m) Parameters()");
+		protos_array[i] = prototype_information;
+		/* Save end */
 		proto_id_struct_offset += 12;
-		printf("\n  [%d] ShortyDescriptor(%s) Return Type(%s) Parameters()", i, strings_array[shorty_idx], types_array[return_type_idx]);
+		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) Parameters()", i, strings_array[shorty_idx], types_array[return_type_idx]);
+	}
+	printf("\n\n");
+}
+
+void fields(FILE *fp) {
+	printf("\033[22;32mFields:\n");
+	unsigned int count = bytesToUint(fp, 80);
+	unsigned int field_id_struct_offset = bytesToUint(fp, 84);
+	unsigned int i;
+	unsigned short class_idx, type_idx;
+	unsigned int name_idx;
+	for(i = 0; i < count; i++) {
+		class_idx = bytesToUshort(fp, field_id_struct_offset);
+		type_idx = bytesToUshort(fp, field_id_struct_offset + 2);
+		name_idx = bytesToUint(fp, field_id_struct_offset + 4);
+		field_id_struct_offset += 8;
+		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Type(\033[22;31m%s\033[22;37m) Name(\033[22;31m%s\033[22;37m)", i, types_array[class_idx], types_array[type_idx], strings_array[name_idx]);
 	}
 	printf("\n\n");
 }
 
 void methods(FILE *fp) {
-	//to be implemented
+	printf("\033[22;32mMethods:\n");
+	unsigned int count = bytesToUint(fp, 88);
+	unsigned int method_struct_offset = bytesToUint(fp, 92);
+	unsigned int i;
+	unsigned short class_idx, proto_idx;
+	unsigned int name_idx;
+	for(i = 0; i < count; i++) {
+		class_idx = bytesToUshort(fp, method_struct_offset);
+		proto_idx = bytesToUshort(fp, method_struct_offset + 2);
+		name_idx = bytesToUint(fp, method_struct_offset + 4);
+		method_struct_offset += 8;
+		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Prototype(%s) Name(\033[22;31m%s\033[22;37m)", i, types_array[class_idx], protos_array[proto_idx], strings_array[name_idx]);
+	}
+	printf("\n\n");
 }
 
 void initialize_arrays(FILE *fp) {
 	//Strings array
-	unsigned int count = bytesToInt(fp, 56, 4);
+	unsigned int count = bytesToUint(fp, 56);
 	strings_array = (char **)malloc(count * sizeof(char *));
 	strings(fp);
 	//Types array
-	count = bytesToInt(fp, 64, 4);
+	count = bytesToUint(fp, 64);
 	types_array = (char **)malloc(count * sizeof(char *));
 	types(fp);
+	//Prototypes array
+	count = bytesToUint(fp, 72);
+	protos_array = (char **)malloc(count * sizeof(char *));
+	protos(fp);
 	clear(); //<-- horrible
 }
 
 int main() {
-	printf("\n[~] DEX Information Extractor v1 [~]\n\n");
+	printf("\n\033[22;32m[~] DEX Information Extractor v1 [~]\n\n");
 	char *dexFile;
-	printf("DEX name: ");
+	printf("\033[22;37mDEX name: \033[22;31m");
 	scanf("%s", dexFile);
 	clear();
 	FILE *fp;
@@ -239,7 +295,7 @@ int main() {
 	unsigned int choice;
 	boolean running = true;
 	while(running) {
-		printf("Select an option:\n 1) Header\n 2) Strings\n 3) Types\n 4) Prototypes\n 5) Exit\n\nChoice: ");
+		printf("\033[22;32mSelect an option:\n\033[22;37m\n 1) Header\n 2) Strings\n 3) Types\n 4) Prototypes\n 5) Fields\n 6) Methods\n 7) Exit\n\n\033[22;32mChoice: \033[22;31m");
 		scanf("%i", &choice);
 		clear();
 		switch(choice) {
@@ -255,7 +311,13 @@ int main() {
 			case 4:
 				protos(fp);
 				break;
-			case 5: 
+			case 5:
+				fields(fp);
+				break;
+			case 6:
+				methods(fp);
+				break;
+			case 7: 
 				fclose(fp);
 				running = false;
 				break;
