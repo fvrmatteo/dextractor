@@ -135,7 +135,9 @@ void methods(FILE *fp) {
 }
 
 void clear() {
-	system("clear");
+	if(system("cls")) {
+		system("clear");
+	}
 	//uncomment this if compiled on Windows: system("cls"), and comment the line above
 }
 
