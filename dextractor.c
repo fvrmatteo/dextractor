@@ -19,7 +19,9 @@ boolean verifyIntegrity(FILE *fp) {
 /* Utility Functions */
 
 void clear() {
-	system("clear");
+	if(system("clear")) {
+		system("cls");
+	}
 }
 
 unsigned short bytesToUshort(FILE *fp, int from) {
@@ -68,7 +70,7 @@ void extractBytes(FILE *fp, int from, int length, char *title, boolean decimal, 
 	unsigned int i;
 	printf("%s", title);
 	if(revert) {
-		unsigned char *c = (char *)malloc(length * sizeof(unsigned char));
+		unsigned char *c = (unsigned char *)malloc(length * sizeof(unsigned char));
 		for(i = 0; i < length; i++) {
 			c[i] = (unsigned char)fgetc(fp);
 		}
@@ -148,8 +150,12 @@ void header(FILE *fp) {
 void strings(FILE *fp, boolean hidden) {
 	unsigned int count = bytesToUint(fp, 56);
 	unsigned int string_offset = bytesToUint(fp, 60);
-	if(!hidden)
+	FILE *out;
+	if(!hidden) {
+		system("rm -f strings.txt");
+		out = fopen("strings.txt", "a+");
 		printf("\033[22;32mStrings:\n");
+	}
 	unsigned int i, j, x;
 	unsigned int offset_start, offset_end, string_length;
 	unsigned char *current_string;
@@ -164,13 +170,12 @@ void strings(FILE *fp, boolean hidden) {
 			exit(1);
 		}
 		unsigned char c;
-		current_string = (char *)malloc(sizeof(unsigned char) * string_length);
-		for(j = 0; j < string_length; j++) {
-			c = fgetc(fp);
+		current_string = (unsigned char *)malloc(sizeof(unsigned char) * string_length);
+		while((c = fgetc(fp)) != '\0') {
 			if(c == '\0') {
 				break;
 			} else {
-				if((int)c >= 0 && (int)c <= 31 || c == '!' || c == '"' || c == '#' || c == '%' || c == '\'' || (c == '(' && j == 0) || c == '&' || (c == ' ' && j == 0)) {
+				if((int)c >= 0 && (int)c <= 31 || c == '!' || c == '"' || c == '#' || c == '%' || c == '\'' || c == '&' || (c == ' ' && j == 0)) {
 					//to be completed, for now it's ok
 				} else {
 					current_string[x] = c;
@@ -178,8 +183,11 @@ void strings(FILE *fp, boolean hidden) {
 				}
 			}
 		}
-		if(!hidden)
+		if(!hidden) {
+			fprintf(out, "\033[22;37m[\033[01;37m%d\033[22;37m] %s\n", i, current_string);
+			fseek(out, 0, SEEK_CUR);
 			printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] %s", i, current_string);
+		}
 		strings_array[i] = current_string;
 		offset_start = offset_end;
 	}
@@ -188,15 +196,22 @@ void strings(FILE *fp, boolean hidden) {
 }
 
 void types(FILE *fp, boolean hidden) {
-	if(!hidden)
+	FILE *out;
+	if(!hidden) {
+		system("rm -f types.txt");
+		out = fopen("types.txt", "a+");
 		printf("\033[22;32mJava Types & Classes:\n");
+	}
 	unsigned int count = bytesToUint(fp, 64);
 	unsigned int i, j;
 	unsigned int type_id_list_offset = bytesToUint(fp, 68);
 	for(i = 0; i < count; i++) {
 		j = bytesToUint(fp, type_id_list_offset);
-		if(!hidden)
+		if(!hidden) {
+			fprintf(out, "\033[22;37m[\033[01;37m%d\033[22;37m] %s \n", i, strings_array[i]);
+			fseek(out, 0, SEEK_CUR);
 			printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] %s", i, strings_array[j]);
+		}
 		types_array[i] = strings_array[j];
 		type_id_list_offset += 4;
 	}
@@ -205,8 +220,12 @@ void types(FILE *fp, boolean hidden) {
 }
 
 void protos(FILE *fp, boolean hidden) {
-	if(!hidden)
+	FILE *out;
+	if(!hidden) {
+		system("rm -f protos.txt");
+		out = fopen("protos.txt", "a+");
 		printf("\033[22;32mPrototypes:\n");
+	}
 	unsigned int count = bytesToUint(fp, 72);
 	unsigned int proto_id_struct_offset = bytesToUint(fp, 76);
 	unsigned int shorty_idx, return_type_idx, parameters_offset_start, parameters_offset_end;
@@ -227,14 +246,19 @@ void protos(FILE *fp, boolean hidden) {
 		protos_array[i] = prototype_information;
 		/* Save end */
 		proto_id_struct_offset += 12;
-		if(!hidden)
+		if(!hidden) {
+			fprintf(out, "\033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) Parameters()\n", i, strings_array[shorty_idx], types_array[return_type_idx]);
+			fseek(out, 0, SEEK_CUR);
 			printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) Parameters()", i, strings_array[shorty_idx], types_array[return_type_idx]);
+		}
 	}
 	if(!hidden)
 		printf("\n\n");
 }
 
 void fields(FILE *fp) {
+	system("rm -f fields.txt");
+	FILE *out = fopen("fields.txt", "a+");
 	printf("\033[22;32mFields:\n");
 	unsigned int count = bytesToUint(fp, 80);
 	unsigned int field_id_struct_offset = bytesToUint(fp, 84);
@@ -246,12 +270,16 @@ void fields(FILE *fp) {
 		type_idx = bytesToUshort(fp, field_id_struct_offset + 2);
 		name_idx = bytesToUint(fp, field_id_struct_offset + 4);
 		field_id_struct_offset += 8;
+		fprintf(out, "\033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Type(\033[22;31m%s\033[22;37m) Name(\033[22;31m%s\033[22;37m)\n", i, types_array[class_idx], types_array[type_idx], strings_array[name_idx]);
+		fseek(out, 0, SEEK_CUR);
 		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Type(\033[22;31m%s\033[22;37m) Name(\033[22;31m%s\033[22;37m)", i, types_array[class_idx], types_array[type_idx], strings_array[name_idx]);
 	}
 	printf("\n\n");
 }
 
 void methods(FILE *fp) {
+	system("rm -f methods.txt");
+	FILE *out = fopen("methods.txt", "a+");
 	printf("\033[22;32mMethods:\n");
 	unsigned int count = bytesToUint(fp, 88);
 	unsigned int method_struct_offset = bytesToUint(fp, 92);
@@ -263,6 +291,8 @@ void methods(FILE *fp) {
 		proto_idx = bytesToUshort(fp, method_struct_offset + 2);
 		name_idx = bytesToUint(fp, method_struct_offset + 4);
 		method_struct_offset += 8;
+		fprintf(out, "\033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Prototype(%s) Name(\033[22;31m%s\033[22;37m)\n", i, types_array[class_idx], protos_array[proto_idx], strings_array[name_idx]);
+		fseek(out, 0, SEEK_CUR);
 		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Prototype(%s) Name(\033[22;31m%s\033[22;37m)", i, types_array[class_idx], protos_array[proto_idx], strings_array[name_idx]);
 	}
 	printf("\n\n");
@@ -283,10 +313,49 @@ void initialize_arrays(FILE *fp) {
 	protos(fp, true);
 }
 
+void deleteTemp() {
+	system("set -v off");
+	system("rm -f header.txt strings.txt types.txt protos.txt fields.txt methods.txt");
+}
+
+void search() {
+	printf("Type the string to search: ");
+	char string[80];
+	scanf("%s", string);
+	char *command = "grep \"";
+	command = strconcat(command, string);
+	printf("Select where to search:\n\033[22;37m 1) Strings\n 2) Types\n 3) Protos\n 4) Fields\n 5) Methods\n\nChoice: ");
+	unsigned int choice;
+	scanf("%i", &choice);
+	printf("\n\n\033[22;32mOutput:\n\n");
+	switch(choice) {
+		case 1:
+			command = strconcat(command, "\" strings.txt");
+			break;
+		case 2:
+			command = strconcat(command, "\" types.txt");
+			break;
+		case 3:
+			command = strconcat(command, "\" protos.txt");
+			break;
+		case 4:
+			command = strconcat(command, "\" fields.txt");
+			break;
+		case 5:
+			command = strconcat(command, "\" methods.txt");
+			break;
+		default:
+			command = strconcat(command, "\" strings.txt");
+			printf("Wrong input: selected \"strings.txt\"!\n\n");
+	}
+	system(command);
+	printf("\n\n");
+}
+
 int main() {
-	printf("\n\033[22;32m[~] DEX Information Extractor v1 [~]\n\n");
-	char *dexFile;
+	printf("\n\033[22;32m[~] DEX Information Extractor v1 {by Nihilus} [~]\n\n");
 	printf("\033[22;37mDEX name: \033[22;31m");
+	char *dexFile;
 	scanf("%s", dexFile);
 	clear();
 	FILE *fp;
@@ -304,7 +373,7 @@ int main() {
 	unsigned int choice;
 	boolean running = true;
 	while(running) {
-		printf("\033[22;32mSelect an option:\n\033[22;37m\n 1) Header\n 2) Strings\n 3) Types\n 4) Prototypes\n 5) Fields\n 6) Methods\n 7) Exit\n\n\033[22;32mChoice: \033[22;31m");
+		printf("\033[22;32mSelect an option:\n\033[22;37m\n 1) Header\n 2) Strings\n 3) Types\n 4) Prototypes\n 5) Fields\n 6) Methods\n 7) Search\n 8) Exit\n\n\033[22;32mChoice: \033[22;31m");
 		scanf("%i", &choice);
 		clear();
 		switch(choice) {
@@ -326,13 +395,16 @@ int main() {
 			case 6:
 				methods(fp);
 				break;
-			case 7: 
+			case 7:
+				search();
+				break;
+			case 8: 
+				deleteTemp();
 				fclose(fp);
 				running = false;
 				break;
 			default: 
 				printf("You have entered an invalid choice!\n\n");
-			break;
 		}
 	}
 	return 0;
