@@ -177,16 +177,12 @@ boolean verifyIntegrity(FILE *fp) {
 
 	//Detection of bad opcodes
 	for(i = 0; i < header_struct.class_defs_size; i++) {
-		for(j = 0; j < class_data_item_array[i].direct_method_size/* && !bad_opcode*/; j++) {
-			totByte = code_item_array[i][j].insns_size * 2;
-			for(y = 0; y < totByte /*&& !bad_opcode*/; y++) {
-				bad_opcode = checkOpcode(code_item_array[i][j].insns[y]);
-			}
-		}
-		for(j = 0; j < class_data_item_array[i].virtual_method_size/* && !bad_opcode*/; j++) {
-			totByte = code_item_array[i][j].insns_size * 2;
-			for(y = 0; y < totByte /*&& !bad_opcode*/; y++) {
-				bad_opcode = checkOpcode(code_item_array[i][j].insns[y]);
+		for(j = 0; !bad_opcode && j < (class_data_item_array[i].virtual_method_size + class_data_item_array[i].direct_method_size); j++) {
+			if(code_item_array[i][j].insns_size > 0 && code_item_array[i][j].insns_size < header_struct.file_size) {
+				totByte = code_item_array[i][j].insns_size * 2;
+				for(y = 0; y < totByte && !bad_opcode; y++) {
+					bad_opcode = checkOpcode(code_item_array[i][j].insns[y]);
+				}
 			}
 		}
 	}
@@ -233,39 +229,6 @@ boolean verifyIntegrity(FILE *fp) {
 
 void fixIntegrity(FILE *fp) {
 	//TO BE IMPLEMENTED
-	if(header_corruption) {
-		header_struct.header_size = 112;
-	}
-	if(method_hiding) {
-		unsigned int i, j, previous_idx_diff = -1, previous_code_off = -1;
-		for(i = 0; i < header_struct.class_defs_size; i++) {
-			for(j = 0; j < class_data_item_array[i].direct_method_size; j++) {
-				if(direct_method_array[i][j].method_idx_diff == 0 && previous_code_off != -1 && (previous_code_off == direct_method_array[i][j].code_off || previous_idx_diff == 2)) {
-					//fix method_idx and code_off
-				}
-				previous_code_off = direct_method_array[i][j].code_off;
-				previous_idx_diff = direct_method_array[i][j].method_idx_diff;
-			}
-			previous_code_off = -1;
-			previous_idx_diff = -1;
-			for(j = 0; j < class_data_item_array[i].virtual_method_size; j++) {
-				if(virtual_method_array[i][j].method_idx_diff == 0 && previous_code_off != -1 && (previous_code_off == virtual_method_array[i][j].code_off || previous_idx_diff == 2)) {
-					//fix method_idx and code_off
-				}
-				previous_code_off = virtual_method_array[i][j].code_off;
-				previous_idx_diff = virtual_method_array[i][j].method_idx_diff;
-			}
-		}
-	}
-	if(class_name_corruption) {
-		//rename the class truncating part of it (total_chars < 255)
-	}
-	if(illegal_pointer) {
-		//fix the pointer, by now I don't how
-	}
-	if(bad_opcode) {
-		//convert all invalid opcodes to 00
-	}
 }
 
 /* Functions used to extract information from DEX structure */
@@ -717,7 +680,7 @@ void code_item(FILE *fp) {
 				//printf("%i\n", code_item_array[i][j].insns_size);
 				code_item_array[i][j].insns = (char *)malloc(sizeof(char) * totByte);
 				setOffset(fp, offset + 16);
-				for(y = 0; totByte > 0 && totByte < header_struct.field_ids_size && y < totByte; y++) {
+				for(y = 0; totByte > 0 && totByte < header_struct.file_size && y < totByte; y++) {
 					code_item_array[i][j].insns[y] = fgetc(fp);
 				}
 				//end of bytecode extraction
@@ -739,7 +702,7 @@ void code_item(FILE *fp) {
 				totByte = code_item_array[i][j].insns_size * 2;
 				code_item_array[i][j].insns = (char *)malloc(sizeof(char) * totByte);
 				setOffset(fp, offset + 16);
-				for(y = 0; totByte > 0 && totByte < header_struct.field_ids_size && y < totByte; y++) {
+				for(y = 0; totByte > 0 && totByte < header_struct.file_size && y < totByte; y++) {
 					code_item_array[i][j].insns[y] = fgetc(fp);
 				}
 				//end of bytecode extraction
@@ -857,7 +820,7 @@ int main() {
 		exit(1);
 	}
 	initialize(fp);
-	//verifyIntegrity(fp);
+	verifyIntegrity(fp);
 	unsigned int choice;
 	boolean running = true;
 	while(running) {
