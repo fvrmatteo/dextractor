@@ -6,7 +6,11 @@ typedef unsigned int boolean;
 #define true 1
 #define false 0
 
-boolean header_corruption = false, method_hiding = false, class_name_corruption = false, bad_opcodes = false, illegal_pointer = false;
+unsigned int ACC_CLASS_MASK = (0x00000001 | 0x00000010 | 0x00000200 | 0x00000400 | 0x00001000 | 0x00002000 | 0x00004000);
+unsigned int ACC_INNER_CLASS_MASK = (0x00000001 | 0x00000010 | 0x00000200 | 0x00000400 | 0x00001000 | 0x00002000 | 0x00004000 | 0x00000002 | 0x00000004 | 0x00000008);
+unsigned int ACC_METHOD_MASK = (0x00000001 | 0x00000002 | 0x00000004 | 0x00000008 | 0x00000010 | 0x00000020 | 0x00000040 | 0x00000080 | 0x00000100 | 0x00000400 | 0x00000800 | 0x00001000 | 0x00010000 | 0x00020000);
+
+boolean header_corruption = false, method_hiding = false, class_name_corruption = false, bad_opcode = false, illegal_pointer = false, bogus_class = false, bogus_method = false;
 
 char **strings_array;
 char **types_array;
@@ -47,6 +51,12 @@ struct protoID {
 	unsigned int parameters_off;
 };
 struct protoID *protoID_array;
+
+struct type_list {
+	unsigned int size;
+	unsigned short *type_idx;
+};
+struct type_list *parameter_list;
 
 /* FieldID */
 

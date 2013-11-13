@@ -107,13 +107,48 @@ int uleb128ToUint(FILE *fp, int *from) {
 
 /* Integrity Checks */
 
+boolean checkOpcode(unsigned char byte) {
+	switch(byte) {
+		case 0x3e:
+		case 0x3f:
+		case 0x40:
+		case 0x41:
+		case 0x42:
+		case 0x43:
+		case 0x73:
+		case 0x79:
+		case 0x7a:
+		case 0xe3:
+		case 0xe4:
+		case 0xe5:
+		case 0xe6:
+		case 0xe7:
+		case 0xe8:
+		case 0xe9:
+		case 0xea:
+		case 0xeb:
+		case 0xec:
+		case 0xed:
+		case 0xef:
+		case 0xf1:
+		case 0xfc:
+		case 0xfd:
+		case 0xfe:
+		case 0xff:
+			//printf("%02x\n", byte);
+			return true;
+	}
+	return false;
+}
+
 boolean verifyIntegrity(FILE *fp) {
 	//Check the header size (it has always to be 70 byte long = 112 decimal)
 	if(header_struct.header_size != 112) {
 		header_corruption = true;
 	}
-	//Check if "method hiding" process is used
-	unsigned int i, j, previous_idx_diff = -1, previous_code_off = -1;
+
+	//Check if "Axelle Aprville method hiding" process is used
+	unsigned int i, j, y, previous_idx_diff = -1, previous_code_off = -1, totByte = 0;
 	for(i = 0; i < header_struct.class_defs_size; i++) {
 		for(j = 0; j < class_data_item_array[i].direct_method_size; j++) {
 			if(direct_method_array[i][j].method_idx_diff == 0 && previous_code_off != -1 && (previous_code_off == direct_method_array[i][j].code_off || previous_idx_diff == 2)) {
@@ -133,25 +168,71 @@ boolean verifyIntegrity(FILE *fp) {
 		}
 	}
 
-	//1) Class name > 255 chars
-	//2) Detection of bad opcodes
+	//Class name > 255 chars
+	for(i = 0; i < header_struct.class_defs_size; i++) {
+		if(strlen(types_array[class_data_array[i].class_idx]) > 255) {
+			class_name_corruption = true;
+		}
+	}
+
+	//Detection of bad opcodes
+	for(i = 0; i < header_struct.class_defs_size; i++) {
+		for(j = 0; j < class_data_item_array[i].direct_method_size/* && !bad_opcode*/; j++) {
+			totByte = code_item_array[i][j].insns_size * 2;
+			for(y = 0; y < totByte /*&& !bad_opcode*/; y++) {
+				bad_opcode = checkOpcode(code_item_array[i][j].insns[y]);
+			}
+		}
+		for(j = 0; j < class_data_item_array[i].virtual_method_size/* && !bad_opcode*/; j++) {
+			totByte = code_item_array[i][j].insns_size * 2;
+			for(y = 0; y < totByte /*&& !bad_opcode*/; y++) {
+				bad_opcode = checkOpcode(code_item_array[i][j].insns[y]);
+			}
+		}
+	}
+
 	//3) Illegal pointers to type, strings, methods (pointer > table_size: alert)
+	
+	//Bogus classes, methods
+	for(i = 0; i < header_struct.class_defs_size; i++) {
+		if((class_data_array[i].access_flags & ACC_CLASS_MASK) != 0) {
+			bogus_class = true;
+		}
+		for(j = 0; j < class_data_item_array[i].virtual_method_size; j++) {
+			if((virtual_method_array[i][j].access_flags & ACC_METHOD_MASK) != 0) {
+				bogus_method = true;
+			}
+		}
+	}
 
 	//Display the report
-	printf("REPORT: ");
+	printf("\033[22;32mREPORT:\033[22;37m\n");
 	if(header_corruption) {
-		printf("\n- The DEX header is corrupted!\n");
+		printf("\n  [\033[22;31m-\033[22;37m] The DEX header is corrupted!\n");
 	}
 	if(method_hiding) {
-		printf("\n- \"Method hiding\" process identified!\n");
+		printf("\n  [\033[22;31m-\033[22;37m] \"Method hiding\" process identified!\n");
 	}
-	if(!method_hiding && !header_corruption) {
-		printf(" all seems to be OK!\n");
+	if(class_name_corruption) {
+		printf("\n  [\033[22;31m-\033[22;37m] Class name length > 255, this can break some tools!\n");
+	}
+	if(bad_opcode) {
+		printf("\n  [\033[22;31m-\033[22;37m] Invalid/Unused opcodes identified!\n");
+	}
+	if(bogus_class) {
+		printf("\n  [\033[22;31m-\033[22;37m] Bogus class detected! (Probably a crafted class that contains bad opcodes)\n");
+	}
+	if(bogus_method) {
+		printf("\n  [\033[22;31m-\033[22;37m] Bogus method detected! (Possible bad code execution)\n");
+	}
+	if(!method_hiding && !header_corruption && !class_name_corruption && !bad_opcode && !bogus_class && !bogus_method) {
+		printf("\n  [\033[22;32m+\033[22;37m] All >>seems<< to be OK!\n");
 	}
 	printf("\n");
 }
 
 void fixIntegrity(FILE *fp) {
+	//TO BE IMPLEMENTED
 	if(header_corruption) {
 		header_struct.header_size = 112;
 	}
@@ -182,7 +263,7 @@ void fixIntegrity(FILE *fp) {
 	if(illegal_pointer) {
 		//fix the pointer, by now I don't how
 	}
-	if(bad_opcodes) {
+	if(bad_opcode) {
 		//convert all invalid opcodes to 00
 	}
 }
@@ -292,7 +373,7 @@ void strings(FILE *fp) {
 			if(c == '\0') {
 				break;
 			} else {
-				if((int)c < 0 || (int)c > 31 && c != '!' && c != '"' && c != '#' && c != '%' && c != '\'' && c != '&' && (c != ' ' || j != 0)) {
+				if((int)c == 60 || (int)c < 0 || (int)c > 31 && ((int)c < 0 || (int)c > 64 || j != 0) && (c != ' ' || j != 0)) {
 					current_string[j++] = c;
 				}
 			}
@@ -339,23 +420,39 @@ void types_view() {
 
 void protos(FILE *fp) {
 	unsigned int proto_id_struct_offset = header_struct.proto_ids_off;
-	unsigned int i;
+	unsigned int i, j, offset;
 	protoID_array = (struct protoID *)malloc(sizeof(struct protoID) * header_struct.proto_ids_size);
+	parameter_list = (struct type_list *)malloc(sizeof(struct type_list) * header_struct.proto_ids_size);
 	for(i = 0; i < header_struct.proto_ids_size; i++) {
 		protoID_array[i].shorty_idx = bytesToUint(fp, proto_id_struct_offset);
 		protoID_array[i].return_type_idx = bytesToUint(fp, proto_id_struct_offset + 4);
 		protoID_array[i].parameters_off = bytesToUint(fp, proto_id_struct_offset + 8);
+		if(protoID_array[i].parameters_off > 0) {
+			offset = protoID_array[i].parameters_off;
+			parameter_list[i].size = bytesToUint(fp, offset);
+			offset += 4;
+			parameter_list[i].type_idx = (unsigned short *)malloc(sizeof(unsigned short) * parameter_list[i].size);
+			for(j = 0; j < parameter_list[i].size; j++) {
+				parameter_list[i].type_idx[j] = bytesToUshort(fp, offset);
+				offset += 2;
+			}
+		}
 		proto_id_struct_offset += 12;
 	}
 }
 
 void protos_view() {
 	FILE *out = fopen("protos.txt", "a+");
-	printf("\033[22;32mPrototypes:\n");
-	unsigned int i;
+	printf("\033[22;32mPrototypes:\n\n");
+	unsigned int i, j;
 	for(i = 0; i < header_struct.proto_ids_size; i++) {
-		printf("\033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) Parameters()\n", i, strings_array[protoID_array[i].shorty_idx], types_array[protoID_array[i].return_type_idx]);
-		fprintf(out, "\n  \033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) Parameters()", i, strings_array[protoID_array[i].shorty_idx], types_array[protoID_array[i].return_type_idx]);
+		printf("  \033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) ", i, strings_array[protoID_array[i].shorty_idx], types_array[protoID_array[i].return_type_idx]);
+		printf("Parameters( ");
+		for(j = 0; protoID_array[i].parameters_off > 0 && j < parameter_list[i].size; j++) {
+			printf("\033[22;31m%s\033[22;37m ", types_array[parameter_list[i].type_idx[j]]);
+		}
+		printf(")\n");
+		fprintf(out, "\n  \033[22;37m[\033[01;37m%d\033[22;37m] ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m)", i, strings_array[protoID_array[i].shorty_idx], types_array[protoID_array[i].return_type_idx]);
 	}
 	fclose(out);
 	printf("\n\n");
@@ -395,53 +492,78 @@ void methods(FILE *fp) {
 		methodID_array[i].proto_idx = bytesToUshort(fp, method_struct_offset + 2);
 		methodID_array[i].name_idx = bytesToUint(fp, method_struct_offset + 4);
 		method_struct_offset += 8;
-		//Prototype to be printed
-		fprintf(out, "\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Prototype() Name(\033[22;31m%s\033[22;37m)", i, types_array[methodID_array[i].class_idx], strings_array[methodID_array[i].name_idx]);
-	
+		fprintf(out, "\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Name(\033[22;31m%s\033[22;37m)", i, types_array[methodID_array[i].class_idx], strings_array[methodID_array[i].name_idx]);
 	}
 	fclose(out);
 }
 
 void methods_view() {
-	printf("\033[22;32mMethods:\n");
-	unsigned int i;
+	printf("\033[22;32mMethods:\n\n");
+	unsigned int i, j;
 	for(i = 0; i < header_struct.method_ids_size; i++) {
-		//Prototype to be printed
-		printf("\033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Prototype() Name(\033[22;31m%s\033[22;37m)\n", i, types_array[methodID_array[i].class_idx], strings_array[methodID_array[i].name_idx]);
+		printf(" \033[22;37m[\033[01;37m%d\033[22;37m] Class(\033[22;31m%s\033[22;37m) Name(\033[22;31m%s\033[22;37m) Prototype(\033[22;31m", i, types_array[methodID_array[i].class_idx], strings_array[methodID_array[i].name_idx]);
+		printf("\033[22;37m ShortyDescriptor(\033[22;31m%s\033[22;37m) Return Type(\033[22;31m%s\033[22;37m) ", strings_array[protoID_array[methodID_array[i].proto_idx].shorty_idx], types_array[protoID_array[methodID_array[i].proto_idx].return_type_idx]);
+		printf("Parameters( ");
+		for(j = 0; protoID_array[methodID_array[i].proto_idx].parameters_off > 0 && j < parameter_list[methodID_array[i].proto_idx].size; j++) {
+			printf("\033[22;31m%s\033[22;37m ", types_array[parameter_list[methodID_array[i].proto_idx].type_idx[j]]);
+		}
+		printf(")\033[22;37m\n");
 	}
 	printf("\n\n");
 }
 
-char * access_flags_table(unsigned int flag) {
-	switch(flag) {
-		case 0x1: return "public";
-		case 0x2: return "private";
-		case 0x4: return "protected";
-		case 0x8: return "static";
-		case 0x10: return "final";
-		case 0x20: return "synchronized";
-		case 0x40: return "volatile";
-		case 0x80: return "transient";
-		case 0x100: return "native";
-		case 0x200: return "interface";
-		case 0x400: return "abstract";
-		case 0x800: return "strictfp";
-		case 0x1000: return "ACC_SYNTHETIC";
-		case 0x2000: return "ACC_ANNOTATION";
-		case 0x4000: return "ACC_ENUM";
-		case 0x10000: return "constructor";
-		case 0x20000: return "ACC_DECLARED_SYNCHRINIZED";
+char * access_flags_table(unsigned int flag, unsigned int type) {
+	// 0 = class, 1 = field, 2 = method
+	if(type == 0) {
+		switch(flag) {
+			case 1: return "public";
+			case 16: return "final";
+			case 32: return "super";
+			case 512: return "interface";
+			case 1024: return "abstract";
+			case 8192: return "ACC_ANNOTATION";
+			case 16384: return "ACC_ENUM";
+		}
+	} else if(type == 1) {
+		switch(flag) {
+			case 1: return "public";
+			case 2: return "private";
+			case 4: return "protected";
+			case 8: return "static";
+			case 16: return "final";
+			case 64: return "volatile";
+			case 128: return "transient";
+			case 4096: return "ACC_SYNTHETIC";
+			case 16384: return "ACC_ENUM";
+		}
+	} else if(type == 2) {
+		switch(flag) {
+			case 1: return "public";
+			case 2: return "private";
+			case 4: return "protected";
+			case 8: return "static";
+			case 16: return "final";
+			case 32: return "synchronized";
+			case 64: return "bridge";
+			case 128: return "ACC_VARARGS";
+			case 256: return "native";
+			case 1024: return "abstract";
+			case 2048: return "strictfp";
+			case 4096: return "ACC_SYNTHETIC";
+			case 65536: return "constructor";
+			case 131072: return "ACC_DECLARED_SYNCHRINIZED";
+		}
 	}
 	return "Not identified";
 }
 
 void class_defs(FILE *fp) {
 	unsigned int class_defs_offset = header_struct.class_defs_off;
-	unsigned int i;
+	unsigned int i, flag = 0;
 	class_data_array = (struct class_def *)malloc(header_struct.class_defs_size * sizeof(struct class_def));
 	for(i = 0; i < header_struct.class_defs_size; i++) {
 		class_data_array[i].class_idx = bytesToUint(fp, class_defs_offset);
-		//access_flags to be fixed
+		//access_flags wrong in some case
 		class_data_array[i].access_flags = bytesToUint(fp, class_defs_offset + 4);
 		class_data_array[i].superclass_idx = bytesToUint(fp, class_defs_offset + 8);
 		class_data_array[i].interfaces_off = bytesToUint(fp, class_defs_offset + 12);
@@ -458,10 +580,14 @@ void class_defs_view() {
 	unsigned int i;
 	for(i = 0; i < header_struct.class_defs_size; i++) {
 		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class: \033[22;31m%s\n", i, types_array[class_data_array[i].class_idx]);
-		//access_flags_table() need to be fixed, bytes representation is ok
-		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Access Flag: \033[22;31m%s\n", access_flags_table(class_data_array[i].access_flags));
+		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Access Flag: \033[22;31m%s\n", access_flags_table(class_data_array[i].access_flags, 0));
+		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Access Flag: \033[22;31m%i\n", class_data_array[i].access_flags);
 		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Superclass: \033[22;31m%s\n", types_array[class_data_array[i].superclass_idx]);
-		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Source File: \033[22;31m%s\n", strings_array[class_data_array[i].source_file_idx]);
+		if(class_data_array[i].source_file_idx != -1) {
+			printf("  \033[22;37m[\033[01;37m+\033[22;37m] Source File: \033[22;31m%s\n", strings_array[class_data_array[i].source_file_idx]);
+		} else {
+			printf("  \033[22;37m[\033[01;37m+\033[22;37m] Source File: \033[22;31mNo Information About The Source File\n");
+		}
 		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Annotation Offset: \033[22;31m%d\n", class_data_array[i].annotations_off);
 		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Class Data Offset: \033[22;31m%d\n", class_data_array[i].class_data_off);
 		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Static Values Offset: \033[22;31m%d\n", class_data_array[i].static_values_off);
@@ -539,7 +665,8 @@ void class_data_item_view() {
 				printf("\n  \033[22;32mStatic Fields:\033[22;37m \n");
 			}
 			printf("\n    field_idx_diff: \033[22;31m%d\033[22;37m\n", static_field_array[i][j].field_idx_diff);
-			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(static_field_array[i][j].access_flags));
+			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(static_field_array[i][j].access_flags, 1));
+			printf("    access_flags: \033[22;31m%i\033[22;37m\n", static_field_array[i][j].access_flags);
 		}
 
 		for(j = 0; j < class_data_item_array[i].instance_fields_size; j++) {
@@ -547,7 +674,8 @@ void class_data_item_view() {
 				printf("\n  \033[22;32mInstance Fields:\033[22;37m \n");
 			}
 			printf("\n    field_idx_diff: \033[22;31m%d\033[22;37m\n", instance_field_array[i][j].field_idx_diff);
-			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(instance_field_array[i][j].access_flags));
+			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(instance_field_array[i][j].access_flags, 1));
+			printf("    access_flags: \033[22;31m%i\033[22;37m\n", instance_field_array[i][j].access_flags);
 		}
 
 		for(j = 0; j < class_data_item_array[i].direct_method_size; j++) {
@@ -555,8 +683,7 @@ void class_data_item_view() {
 				printf("\n  \033[22;32mDirect Methods:\033[22;37m \n");
 			}
 			printf("\n    method_idx_diff: \033[22;31m%d\033[22;37m\n", direct_method_array[i][j].method_idx_diff);
-			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(direct_method_array[i][j].access_flags));
-			printf("    code_off: \033[22;31m%d\033[22;37m\n", direct_method_array[i][j].code_off);
+			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(direct_method_array[i][j].access_flags, 2));
 		}
 
 		for(j = 0; j < class_data_item_array[i].virtual_method_size; j++) {
@@ -564,8 +691,7 @@ void class_data_item_view() {
 				printf("\n  \033[22;32mVirtual Methods:\033[22;37m \n");
 			}
 			printf("\n    method_idx_diff: \033[22;31m%d\033[22;37m\n", virtual_method_array[i][j].method_idx_diff);
-			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(virtual_method_array[i][j].access_flags));
-			printf("    code_off: \033[22;31m%d\033[22;37m\n", virtual_method_array[i][j].code_off);
+			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(virtual_method_array[i][j].access_flags, 2));
 		}
 	}
 	printf("\n\n");
@@ -588,10 +714,13 @@ void code_item(FILE *fp) {
 				code_item_array[i][j].insns = (unsigned char *)malloc(code_item_array[i][j].insns_size * sizeof(unsigned char) * 2);
 				//bytecode extraction
 				totByte = code_item_array[i][j].insns_size * 2;
+				//printf("%i\n", code_item_array[i][j].insns_size);
+				code_item_array[i][j].insns = (char *)malloc(sizeof(char) * totByte);
 				setOffset(fp, offset + 16);
-				for(y = 0; y < totByte; y++) {
+				for(y = 0; totByte > 0 && totByte < header_struct.field_ids_size && y < totByte; y++) {
 					code_item_array[i][j].insns[y] = fgetc(fp);
 				}
+				//end of bytecode extraction
 				if(code_item_array[i][j].tries_size > 0) {
 					code_item_array[i][j].padding = bytesToUshort(fp, offset + 16 + code_item_array[i][j].insns_size);
 				}
@@ -608,10 +737,12 @@ void code_item(FILE *fp) {
 				code_item_array[i][j].insns = (unsigned char *)malloc(code_item_array[i][j].insns_size * sizeof(unsigned char) * 2);
 				//bytecode extraction
 				totByte = code_item_array[i][j].insns_size * 2;
+				code_item_array[i][j].insns = (char *)malloc(sizeof(char) * totByte);
 				setOffset(fp, offset + 16);
-				for(y = 0; y < totByte; y++) {
+				for(y = 0; totByte > 0 && totByte < header_struct.field_ids_size && y < totByte; y++) {
 					code_item_array[i][j].insns[y] = fgetc(fp);
 				}
+				//end of bytecode extraction
 				if(code_item_array[i][j].tries_size > 0) {
 					code_item_array[i][j].padding = bytesToUshort(fp, offset + 16 + code_item_array[i][j].insns_size);
 				}
@@ -653,63 +784,6 @@ void code_item_view() {
 	}
 	printf("\n\n");
 }
-
-/*void decompile() {
-	unsigned int i, j, z, size;
-	char *opcode = malloc(sizeof(char) * 50);
-	char parameter[2];
-	for(i = 0; i < header_struct.class_defs_size; i++) {
-		for(j = 0; j < (class_data_item_array[i].direct_method_size + class_data_item_array[i].virtual_method_size); j++) {
-			if((size = code_item_array[i][j].insns_size) > 0) {
-				for(z = 0; z < size; z++) {
-					switch((unsigned int)code_item_array[i][j].insns[z]) {
-						case 0: 
-							opcode = "nop";
-							break;
-						case 1: 
-							opcode = "move ";
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							opcode = strconcat(opcode, ", ");
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							break;
-						case 2:
-							opcode = "move/from16 ";
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							opcode = strconcat(opcode, ", ");
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							break;
-						case 3:
-							opcode = "move/16 ";
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							opcode = strconcat(opcode, ", ");
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							break;
-						case 4:
-							opcode = "move-wide ";
-							break;
-						case 5:
-							opcode = "move-wide/from16 ";
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							opcode = strconcat(opcode, ", ");
-							sprintf(parameter, "%02x", code_item_array[i][j].insns[++z]);
-							opcode = strconcat(opcode, parameter);
-							break;
-						case 6:
-							break;
-					}
-					printf("%s\n", opcode);
-				}
-			}
-		}
-	}
-}*/
 
 void initialize(FILE *fp) {
 	//Header
@@ -771,7 +845,7 @@ void search() {
 }
 
 int main() {
-	printf("\n\033[22;32m[~] DEX Information Extractor v1 {by Nihilus} [~]\n\n");
+	printf("\n\033[22;32m[~] DEX Information Extractor [~]\n\n");
 	printf("\033[22;37mDEX name: \033[22;31m");
 	char *dexFile;
 	scanf("%s", dexFile);
@@ -783,11 +857,11 @@ int main() {
 		exit(1);
 	}
 	initialize(fp);
-	verifyIntegrity(fp);
+	//verifyIntegrity(fp);
 	unsigned int choice;
 	boolean running = true;
 	while(running) {
-		printf("\033[22;32mSelect an option:\n\033[22;37m\n 1) Header\n 2) Strings\n 3) Types\n 4) Prototypes\n 5) Fields\n 6) Methods\n 7) Class Defs\n 8) Class Items\n 9) Code Item\n 10) Search\n 0) Exit\n\n\033[22;32mChoice: \033[22;31m");
+		printf("\033[22;32mSelect an option:\n\033[22;37m\n  1) Header\n  2) Strings\n  3) Types\n  4) Prototypes\n  5) Fields\n  6) Methods\n  7) Class Defs\n  8) Class Items\n  9) Code Item\n  10) Search\n  0) Exit\n\n\033[22;32mChoice: \033[22;31m");
 		scanf("%i", &choice);
 		clear();
 		switch(choice) {
@@ -817,9 +891,6 @@ int main() {
 				break;
 			case 9:
 				code_item_view();
-				break;
-			/*case 10:
-				decompile();*/
 				break;
 			case 10:
 				search();
