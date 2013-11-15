@@ -23,9 +23,9 @@ char *strconcat(char *s1, char *s2) {
 	return t;
 }
 
-int potenza(int base, int esponente) {
+int power(int base, int exp) {
 	unsigned int i, res = 1;
-	for(i = 0; i < esponente; i++) {
+	for(i = 0; i < exp; i++) {
 		res *= base;
 	}
 	return res;
@@ -97,7 +97,7 @@ int uleb128ToUint(FILE *fp, int *from) {
 	for(i = 0; i < count; i++) {
 		for(j = 6; j >= 0; j--) {
 			if(converted[i][j] == 1) {
-				somma += potenza(2, z);
+				somma += power(2, z);
 			}
 			z++;
 		}
@@ -190,12 +190,21 @@ boolean verifyIntegrity(FILE *fp) {
 	//3) Illegal pointers to type, strings, methods (pointer > table_size: alert)
 	
 	//Bogus classes, methods
+	unsigned int converted = 0;
 	for(i = 0; i < header_struct.class_defs_size; i++) {
-		if((class_data_array[i].access_flags & ACC_CLASS_MASK) != 0) {
+		converted = 0;
+		for(y = 0; y < 18; y++) {
+			converted += (class_data_array[i].access_flags[y] == 1 ? power(2, y) : 0);
+		}
+		if((converted & 231904) != 0) {
 			bogus_class = true;
 		}
 		for(j = 0; j < class_data_item_array[i].virtual_method_size; j++) {
-			if((virtual_method_array[i][j].access_flags & ACC_METHOD_MASK) != 0) {
+			converted = 0;
+			for(y = 0; y < 18; y++) {
+				converted += (virtual_method_array[i][j].access_flags[y] == 1 ? power(2, y) : 0);
+			}
+			if((converted & 57856) != 0) {
 				bogus_method = true;
 			}
 		}
@@ -475,49 +484,68 @@ void methods_view() {
 	printf("\n\n");
 }
 
-char * access_flags_table(unsigned int flag, unsigned int type) {
+char * access_flags_table(unsigned char * flag, unsigned int type) {
 	// 0 = class, 1 = field, 2 = method
-	if(type == 0) {
-		switch(flag) {
-			case 1: return "public";
-			case 16: return "final";
-			case 32: return "super";
-			case 512: return "interface";
-			case 1024: return "abstract";
-			case 8192: return "ACC_ANNOTATION";
-			case 16384: return "ACC_ENUM";
-		}
-	} else if(type == 1) {
-		switch(flag) {
-			case 1: return "public";
-			case 2: return "private";
-			case 4: return "protected";
-			case 8: return "static";
-			case 16: return "final";
-			case 64: return "volatile";
-			case 128: return "transient";
-			case 4096: return "ACC_SYNTHETIC";
-			case 16384: return "ACC_ENUM";
-		}
-	} else if(type == 2) {
-		switch(flag) {
-			case 1: return "public";
-			case 2: return "private";
-			case 4: return "protected";
-			case 8: return "static";
-			case 16: return "final";
-			case 32: return "synchronized";
-			case 64: return "bridge";
-			case 128: return "ACC_VARARGS";
-			case 256: return "native";
-			case 1024: return "abstract";
-			case 2048: return "strictfp";
-			case 4096: return "ACC_SYNTHETIC";
-			case 65536: return "constructor";
-			case 131072: return "ACC_DECLARED_SYNCHRINIZED";
+	unsigned char *flags = "";
+
+	if(flag[0])	flags = strconcat(flags, "public ");
+	if(flag[1]) flags = strconcat(flags, "private ");
+	if(flag[2]) flags = strconcat(flags, "protected ");
+	if(flag[3]) flags = strconcat(flags, "static ");
+	if(flag[4]) flags = strconcat(flags, "final ");
+	if(flag[5]) {
+		if(type == 0) {
+			flags = strconcat(flags, "super ");
+		} else {
+			flags = strconcat(flags, "synchronized ");
+		}	
+	}
+	if(flag[6]) {
+		if(type == 1) {
+			flags = strconcat(flags, "volatile ");
+		} else {
+			flags = strconcat(flags, "bridge ");
 		}
 	}
-	return "Not identified";
+	if(flag[7]) {
+		if(type == 1) {
+			flags = strconcat(flags, "transient ");
+		} else {
+			flags = strconcat(flags, "ACC_VARARGS ");
+		}
+	}
+	if(flag[8])	flags = strconcat(flags, "native ");
+	if(flag[9])	flags = strconcat(flags, "interface ");
+	if(flag[10]) flags = strconcat(flags, "abstract ");
+	if(flag[11]) flags = strconcat(flags, "strictfp ");
+	if(flag[12]) flags = strconcat(flags, "ACC_SYNTHETIC ");
+	if(flag[13]) flags = strconcat(flags, "ACC_ANNOTATION ");
+	if(flag[14]) flags = strconcat(flags, "ACC_ENUM ");
+	if(flag[16]) flags = strconcat(flags, "constructor ");
+	if(flag[17]) flags = strconcat(flags, "ACC_DECLARED_SYNCHRINIZED ");
+	return flags;
+}
+
+unsigned char *extractFlagBits(FILE *fp, unsigned int *offset, boolean uleb128) {
+	unsigned char *bits = (unsigned char *)calloc(18, sizeof(char));
+	unsigned int *temp = (unsigned int *)malloc(sizeof(int) * 8);
+	unsigned int i, j, z = 0;
+	if(uleb128) {
+		setOffset(fp, *offset);
+		unsigned int uleb128 = uleb128ToUint(fp, offset);
+		for (i = 0; i < 21; ++i) {
+		    bits[i] = uleb128 & (1 << i) ? 1 : 0;
+		}
+	} else {
+		setOffset(fp, *offset + 4);
+		for(i = 0; i < 3; i++) {
+			temp = byteToBits(fgetc(fp));
+			for(j = 0; j < 8; j++) {
+				bits[z++] = (unsigned char)temp[j];
+			}
+		}
+	}
+	return bits;
 }
 
 void class_defs(FILE *fp) {
@@ -526,8 +554,7 @@ void class_defs(FILE *fp) {
 	class_data_array = (struct class_def *)malloc(header_struct.class_defs_size * sizeof(struct class_def));
 	for(i = 0; i < header_struct.class_defs_size; i++) {
 		class_data_array[i].class_idx = bytesToUint(fp, class_defs_offset);
-		//access_flags wrong in some case
-		class_data_array[i].access_flags = bytesToUint(fp, class_defs_offset + 4);
+		class_data_array[i].access_flags = extractFlagBits(fp, &class_defs_offset, false);
 		class_data_array[i].superclass_idx = bytesToUint(fp, class_defs_offset + 8);
 		class_data_array[i].interfaces_off = bytesToUint(fp, class_defs_offset + 12);
 		class_data_array[i].source_file_idx = bytesToUint(fp, class_defs_offset + 16);
@@ -544,7 +571,6 @@ void class_defs_view() {
 	for(i = 0; i < header_struct.class_defs_size; i++) {
 		printf("\n  \033[22;37m[\033[01;37m%d\033[22;37m] Class: \033[22;31m%s\n", i, types_array[class_data_array[i].class_idx]);
 		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Access Flag: \033[22;31m%s\n", access_flags_table(class_data_array[i].access_flags, 0));
-		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Access Flag: \033[22;31m%i\n", class_data_array[i].access_flags);
 		printf("  \033[22;37m[\033[01;37m+\033[22;37m] Superclass: \033[22;31m%s\n", types_array[class_data_array[i].superclass_idx]);
 		if(class_data_array[i].source_file_idx != -1) {
 			printf("  \033[22;37m[\033[01;37m+\033[22;37m] Source File: \033[22;31m%s\n", strings_array[class_data_array[i].source_file_idx]);
@@ -586,26 +612,26 @@ void class_data_item(FILE *fp) {
 
 		for(j = 0; j < class_data_item_array[i].static_fields_size; j++) {
 			static_field.field_idx_diff = uleb128ToUint(fp, &counter);
-			static_field.access_flags = uleb128ToUint(fp, &counter);
+			static_field.access_flags = extractFlagBits(fp, &counter, true);
 			static_field_array[i][j] = static_field;
 		}
 
 		for(j = 0; j < class_data_item_array[i].instance_fields_size; j++) {
 			instance_fields.field_idx_diff = uleb128ToUint(fp, &counter);
-			instance_fields.access_flags = uleb128ToUint(fp, &counter);
+			instance_fields.access_flags = extractFlagBits(fp, &counter, true);
 			instance_field_array[i][j] = instance_fields;
 		}
 
 		for(j = 0; j < class_data_item_array[i].direct_method_size; j++) {
 			direct_method.method_idx_diff = uleb128ToUint(fp, &counter);
-			direct_method.access_flags = uleb128ToUint(fp, &counter);
+			direct_method.access_flags = extractFlagBits(fp, &counter, true);
 			direct_method.code_off = uleb128ToUint(fp, &counter);
 			direct_method_array[i][j] = direct_method;
 		}
 
 		for(j = 0; j < class_data_item_array[i].virtual_method_size; j++) {
 			virtual_method.method_idx_diff = uleb128ToUint(fp, &counter);
-			virtual_method.access_flags = uleb128ToUint(fp, &counter);
+			virtual_method.access_flags = extractFlagBits(fp, &counter, true);
 			virtual_method.code_off = uleb128ToUint(fp, &counter);
 			virtual_method_array[i][j] = virtual_method;
 		}
@@ -629,7 +655,6 @@ void class_data_item_view() {
 			}
 			printf("\n    field_idx_diff: \033[22;31m%d\033[22;37m\n", static_field_array[i][j].field_idx_diff);
 			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(static_field_array[i][j].access_flags, 1));
-			printf("    access_flags: \033[22;31m%i\033[22;37m\n", static_field_array[i][j].access_flags);
 		}
 
 		for(j = 0; j < class_data_item_array[i].instance_fields_size; j++) {
@@ -638,7 +663,6 @@ void class_data_item_view() {
 			}
 			printf("\n    field_idx_diff: \033[22;31m%d\033[22;37m\n", instance_field_array[i][j].field_idx_diff);
 			printf("    access_flags: \033[22;31m%s\033[22;37m\n", access_flags_table(instance_field_array[i][j].access_flags, 1));
-			printf("    access_flags: \033[22;31m%i\033[22;37m\n", instance_field_array[i][j].access_flags);
 		}
 
 		for(j = 0; j < class_data_item_array[i].direct_method_size; j++) {
