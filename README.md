@@ -7,6 +7,7 @@ A simple DEX information extractor
 - Overview about APK and DEX file format: http://www.amazon.com/Decompiling-Android-Godfrey-Nolan/dp/1430242485
 - Axelle Aprville "Hidden Methods" @Hack.lu-2013: http://t.co/PO1QnkqbTw
 - Jurriaan Bremer "Abusing Dalvik" @Hack.lu-2013: http://archive.hack.lu/2013/AbusingDalvikBeyondRecognition.pdf
+- Tim Strazzere "Practicing Safe Dex" @BlackHat-USA-2012: http://www.strazzere.com/papers/DexEducation-PracticingSafeDex.pdf
 
 Main goals:
 
